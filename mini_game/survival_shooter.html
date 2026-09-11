@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>서바이벌 슈터</title>
+<style>
+  :root{
+    --bg: #05070c;
+    --grid: #101a26;
+    --player: #4fd6ff;
+    --enemy: #ff4d6d;
+    --bullet: #eaf6ff;
+    --text: #cfd8e3;
+    --text-dim: #6b7a8f;
+    --accent: #4fd6ff;
+    --mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, 'Courier New', monospace;
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+
+  *{ box-sizing: border-box; }
+
+  html, body{
+    margin:0;
+    padding:0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+  }
+
+  body{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding: 24px 14px 40px;
+  }
+
+  h1{
+    font-family: var(--mono);
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--text);
+    margin: 0 0 14px;
+  }
+
+  .stage{
+    position: relative;
+    width: 100%;
+    max-width: 640px;
+    aspect-ratio: 640 / 420;
+    border: 1px solid #17202e;
+    border-radius: 6px;
+    overflow: hidden;
+    background: var(--bg);
+    transition: max-width 0.2s ease;
+  }
+
+  .size-controls{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    margin-bottom:14px;
+    font-size:12px;
+    color: var(--text-dim);
+  }
+
+  .size-controls .size-btns{
+    display:flex;
+    gap:6px;
+  }
+
+  .size-controls button{
+    padding: 5px 12px;
+    border-radius: 5px;
+    border: 1px solid #17202e;
+    background: var(--bg);
+    color: var(--text-dim);
+    font-family: var(--sans);
+    font-size: 12px;
+    cursor: pointer;
+  }
+
+  .size-controls button.active{
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .size-controls button:hover{ filter: brightness(1.3); }
+  .size-controls button:focus-visible{ outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  canvas{
+    display:block;
+    width: 100%;
+    height: 100%;
+    touch-action: none;
+  }
+
+  .overlay{
+    position:absolute;
+    inset:0;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background: rgba(5,7,12,0.86);
+    text-align:center;
+    padding: 20px;
+  }
+
+  .overlay-inner{ max-width: 380px; }
+
+  .overlay h2{
+    font-family: var(--mono);
+    font-size: 20px;
+    color: var(--text);
+    margin: 0 0 14px;
+  }
+
+  .overlay p{
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--text-dim);
+    margin: 0 0 8px;
+  }
+
+  .overlay .stats{
+    font-family: var(--mono);
+    font-size: 15px;
+    color: var(--accent);
+    margin: 18px 0;
+  }
+
+  .overlay .stats div{ margin: 4px 0; }
+
+  .overlay button{
+    margin-top: 8px;
+    padding: 12px 30px;
+    border-radius: 6px;
+    border: none;
+    background: var(--accent);
+    color: #05070c;
+    font-family: var(--sans);
+    font-weight: 700;
+    font-size: 14px;
+    cursor: pointer;
+  }
+
+  .overlay button:hover{ filter: brightness(1.1); }
+  .overlay button:focus-visible{ outline: 2px solid var(--text); outline-offset: 2px; }
+
+  .hint{
+    margin-top: 12px;
+    font-size: 12px;
+    color: var(--text-dim);
+    text-align:center;
+    max-width: 640px;
+    line-height: 1.6;
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    *{ transition: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<h1>서바이벌 슈터</h1>
+
+<div class="size-controls">
+  <span>화면 크기</span>
+  <div class="size-btns">
+    <button type="button" class="size-btn" data-size="420">작게</button>
+    <button type="button" class="size-btn active" data-size="640">보통</button>
+    <button type="button" class="size-btn" data-size="880">크게</button>
+  </div>
+</div>
+
+<div class="stage" id="stage">
+  <canvas id="game" width="640" height="420"></canvas>
+
+  <div class="overlay" id="start-overlay">
+    <div class="overlay-inner">
+      <h2>SURVIVAL SHOOTER</h2>
+      <p>PC — WASD 또는 방향키로 이동, 마우스로 조준 후 클릭(누르고 있기)하면 사격합니다.</p>
+      <p>모바일 — 화면을 드래그하면 이동, 손을 대고 있는 동안 가까운 적을 자동으로 조준해 사격합니다.</p>
+      <p style="margin-top:14px;">빨강: 기본형 · 노랑: 빠르지만 한 방에 처치 · 보라: 느리지만 3방을 맞혀야 처치</p>
+      <p>초록 아이템을 먹으면 동시 발사 탄환이 1발씩 늘어납니다(최대 5발). 3초 안에 먹지 않으면 사라집니다.</p>
+      <button id="start-btn">게임 시작</button>
+    </div>
+  </div>
+
+  <div class="overlay" id="gameover-overlay" style="display:none;">
+    <div class="overlay-inner">
+      <h2>GAME OVER</h2>
+      <div class="stats">
+        <div id="final-time">생존 시간 00:00</div>
+        <div id="final-kills">처치 수 0</div>
+      </div>
+      <button id="restart-btn">다시 시작</button>
+    </div>
+  </div>
+</div>
+
+<div class="hint">적이 스치면 체력이 줄어듭니다. 시간이 지날수록 적이 더 자주 몰려오고, 6초 이후엔 노랑(고속형), 15초 이후엔 보라(탱크형)가 섞여 등장합니다.</div>
+
+<script>
+(function(){
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+
+  const startOverlay = document.getElementById('start-overlay');
+  const gameoverOverlay = document.getElementById('gameover-overlay');
+  const startBtn = document.getElementById('start-btn');
+  const restartBtn = document.getElementById('restart-btn');
+  const finalTimeEl = document.getElementById('final-time');
+  const finalKillsEl = document.getElementById('final-kills');
+
+  let state = 'start'; // 'start' | 'playing' | 'gameover'
+
+  let player, bullets, enemies, pickups, score, kills, elapsed, spawnTimer, lastFire, lastTime;
+
+  const FIRE_INTERVAL = 160; // ms
+  const BULLET_SPEED = 480;
+  const PLAYER_SPEED = 220;
+  const ENEMY_BASE_SPEED = 70;
+  const INVULN_MS = 600;
+  const MAX_BULLET_COUNT = 5;
+  const PICKUP_DROP_CHANCE = 0.09;
+  const PICKUP_LIFETIME_MS = 3000;
+  const PICKUP_RADIUS = 9;
+
+  const ENEMY_TYPES = {
+    grunt: { r: 13, speedMult: 1.0, hp: 1, damage: 20, color: '#ff4d6d', glow: 'rgba(255,77,109,0.6)', score: 10 },
+    scout: { r: 9,  speedMult: 1.8, hp: 1, damage: 12, color: '#ffd166', glow: 'rgba(255,209,102,0.6)', score: 15 },
+    tank:  { r: 20, speedMult: 0.5, hp: 3, damage: 30, color: '#b98eff', glow: 'rgba(185,142,255,0.6)', score: 30 }
+  };
+
+  function pickEnemyType(elapsedSec){
+    const options = [{ type: 'grunt', w: 10 }];
+    if(elapsedSec > 6) options.push({ type: 'scout', w: Math.min(9, (elapsedSec - 6) * 0.7) });
+    if(elapsedSec > 15) options.push({ type: 'tank', w: Math.min(6, (elapsedSec - 15) * 0.5) });
+    const total = options.reduce((s, o) => s + o.w, 0);
+    let r = Math.random() * total;
+    for(const o of options){
+      if(r < o.w) return o.type;
+      r -= o.w;
+    }
+    return 'grunt';
+  }
+
+  function resetGame(){
+    player = { x: W/2, y: H/2, r: 12, hp: 100, maxHp: 100, invulnUntil: 0, aimX: 1, aimY: 0, bulletCount: 1 };
+    bullets = [];
+    enemies = [];
+    pickups = [];
+    score = 0;
+    kills = 0;
+    elapsed = 0;
+    spawnTimer = 900;
+    lastFire = 0;
+    lastTime = performance.now();
+  }
+
+  // --- input ---
+  const keys = {};
+  const mouse = { x: W/2, y: H/2, down: false };
+  const touch = { active: false, originX: 0, originY: 0, curX: 0, curY: 0 };
+
+  function canvasCoords(clientX, clientY){
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: (clientX - rect.left) * (W / rect.width),
+      y: (clientY - rect.top) * (H / rect.height)
+    };
+  }
+
+  window.addEventListener('keydown', e => { keys[e.code] = true; });
+  window.addEventListener('keyup', e => { keys[e.code] = false; });
+
+  canvas.addEventListener('mousemove', e => {
+    const p = canvasCoords(e.clientX, e.clientY);
+    mouse.x = p.x; mouse.y = p.y;
+  });
+  canvas.addEventListener('mousedown', () => { mouse.down = true; });
+  window.addEventListener('mouseup', () => { mouse.down = false; });
+
+  canvas.addEventListener('touchstart', e => {
+    e.preventDefault();
+    const t = e.touches[0];
+    const p = canvasCoords(t.clientX, t.clientY);
+    touch.active = true;
+    touch.originX = p.x; touch.originY = p.y;
+    touch.curX = p.x; touch.curY = p.y;
+  }, { passive: false });
+
+  canvas.addEventListener('touchmove', e => {
+    e.preventDefault();
+    const t = e.touches[0];
+    const p = canvasCoords(t.clientX, t.clientY);
+    touch.curX = p.x; touch.curY = p.y;
+  }, { passive: false });
+
+  canvas.addEventListener('touchend', e => {
+    e.preventDefault();
+    touch.active = false;
+  }, { passive: false });
+
+  // --- helpers ---
+  function clamp(v, lo, hi){ return Math.max(lo, Math.min(hi, v)); }
+
+  function currentSpawnInterval(){
+    return Math.max(280, 1000 - elapsed * 18);
+  }
+
+  function currentEnemySpeed(){
+    return ENEMY_BASE_SPEED + Math.min(90, elapsed * 1.4);
+  }
+
+  function spawnEnemy(){
+    const edge = Math.floor(Math.random() * 4);
+    let x, y;
+    if(edge === 0){ x = Math.random() * W; y = -20; }
+    else if(edge === 1){ x = W + 20; y = Math.random() * H; }
+    else if(edge === 2){ x = Math.random() * W; y = H + 20; }
+    else { x = -20; y = Math.random() * H; }
+
+    const typeKey = pickEnemyType(elapsed);
+    const def = ENEMY_TYPES[typeKey];
+    enemies.push({
+      x, y,
+      type: typeKey,
+      r: def.r,
+      speed: currentEnemySpeed() * def.speedMult,
+      hp: def.hp,
+      maxHp: def.hp,
+      damage: def.damage,
+      color: def.color,
+      glow: def.glow,
+      score: def.score,
+      hitFlashUntil: 0
+    });
+  }
+
+  function nearestEnemy(){
+    let best = null, bestD = Infinity;
+    for(const en of enemies){
+      const d = (en.x - player.x) ** 2 + (en.y - player.y) ** 2;
+      if(d < bestD){ bestD = d; best = en; }
+    }
+    return best;
+  }
+
+  function fireBullets(dirX, dirY){
+    const baseAngle = Math.atan2(dirY, dirX);
+    const n = player.bulletCount;
+    const spreadStep = 7 * Math.PI / 180; // 7 degrees between adjacent bullets
+    const startOffset = -((n - 1) / 2) * spreadStep;
+    for(let i = 0; i < n; i++){
+      const angle = baseAngle + startOffset + i * spreadStep;
+      bullets.push({
+        x: player.x, y: player.y,
+        vx: Math.cos(angle) * BULLET_SPEED,
+        vy: Math.sin(angle) * BULLET_SPEED,
+        r: 4
+      });
+    }
+  }
+
+  // --- update ---
+  function update(dt, now){
+    elapsed += dt;
+
+    // movement input
+    let mx = 0, my = 0;
+    if(keys['KeyW'] || keys['ArrowUp']) my -= 1;
+    if(keys['KeyS'] || keys['ArrowDown']) my += 1;
+    if(keys['KeyA'] || keys['ArrowLeft']) mx -= 1;
+    if(keys['KeyD'] || keys['ArrowRight']) mx += 1;
+
+    let usingTouchMove = false;
+    if(touch.active){
+      const dx = touch.curX - touch.originX;
+      const dy = touch.curY - touch.originY;
+      const dist = Math.hypot(dx, dy);
+      const maxR = 46;
+      if(dist > 6){
+        const clamped = Math.min(dist, maxR) / maxR;
+        mx = (dx / dist) * clamped;
+        my = (dy / dist) * clamped;
+        usingTouchMove = true;
+      }
+    }
+
+    if(!usingTouchMove){
+      const len = Math.hypot(mx, my);
+      if(len > 1){ mx /= len; my /= len; }
+    }
+
+    player.x = clamp(player.x + mx * PLAYER_SPEED * dt, player.r, W - player.r);
+    player.y = clamp(player.y + my * PLAYER_SPEED * dt, player.r, H - player.r);
+
+    // aim
+    if(touch.active){
+      const ne = nearestEnemy();
+      if(ne){ player.aimX = ne.x - player.x; player.aimY = ne.y - player.y; }
+    } else {
+      player.aimX = mouse.x - player.x;
+      player.aimY = mouse.y - player.y;
+    }
+
+    // firing
+    const wantsFire = mouse.down || touch.active;
+    if(wantsFire && now - lastFire > FIRE_INTERVAL){
+      let dirX = player.aimX, dirY = player.aimY;
+      if(touch.active){
+        const ne = nearestEnemy();
+        if(ne){ dirX = ne.x - player.x; dirY = ne.y - player.y; }
+      }
+      if(Math.hypot(dirX, dirY) > 0.01){
+        fireBullets(dirX, dirY);
+        lastFire = now;
+      }
+    }
+
+    // bullets
+    for(let i = bullets.length - 1; i >= 0; i--){
+      const b = bullets[i];
+      b.x += b.vx * dt; b.y += b.vy * dt;
+      if(b.x < -30 || b.x > W + 30 || b.y < -30 || b.y > H + 30) bullets.splice(i, 1);
+    }
+
+    // enemy spawn
+    spawnTimer -= dt * 1000;
+    if(spawnTimer <= 0){
+      spawnEnemy();
+      spawnTimer = currentSpawnInterval();
+    }
+
+    // enemy movement
+    for(const en of enemies){
+      const dx = player.x - en.x, dy = player.y - en.y;
+      const d = Math.hypot(dx, dy) || 1;
+      en.x += (dx / d) * en.speed * dt;
+      en.y += (dy / d) * en.speed * dt;
+    }
+
+    // bullet-enemy collisions
+    for(let i = enemies.length - 1; i >= 0; i--){
+      const en = enemies[i];
+      for(let j = bullets.length - 1; j >= 0; j--){
+        const b = bullets[j];
+        const dist = Math.hypot(en.x - b.x, en.y - b.y);
+        if(dist < en.r + b.r){
+          bullets.splice(j, 1);
+          en.hp -= 1;
+          if(en.hp <= 0){
+            enemies.splice(i, 1);
+            score += en.score;
+            kills += 1;
+            if(Math.random() < PICKUP_DROP_CHANCE){
+              pickups.push({ x: en.x, y: en.y, r: PICKUP_RADIUS, expiresAt: now + PICKUP_LIFETIME_MS });
+            }
+          } else {
+            en.hitFlashUntil = now + 90;
+          }
+          break;
+        }
+      }
+    }
+
+    // enemy-player collisions
+    if(now > player.invulnUntil){
+      for(let i = enemies.length - 1; i >= 0; i--){
+        const en = enemies[i];
+        const dist = Math.hypot(en.x - player.x, en.y - player.y);
+        if(dist < en.r + player.r){
+          player.hp = Math.max(0, player.hp - en.damage);
+          enemies.splice(i, 1);
+          player.invulnUntil = now + INVULN_MS;
+          break;
+        }
+      }
+    }
+
+    // pickups: expire, or collect on player contact
+    for(let i = pickups.length - 1; i >= 0; i--){
+      const p = pickups[i];
+      if(now > p.expiresAt){
+        pickups.splice(i, 1);
+        continue;
+      }
+      const dist = Math.hypot(p.x - player.x, p.y - player.y);
+      if(dist < p.r + player.r){
+        pickups.splice(i, 1);
+        player.bulletCount = Math.min(MAX_BULLET_COUNT, player.bulletCount + 1);
+      }
+    }
+
+    if(player.hp <= 0){
+      endGame();
+    }
+  }
+
+  // --- render ---
+  function drawGrid(){
+    ctx.strokeStyle = '#101a26';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for(let x = 0; x <= W; x += 40){ ctx.moveTo(x, 0); ctx.lineTo(x, H); }
+    for(let y = 0; y <= H; y += 40){ ctx.moveTo(0, y); ctx.lineTo(W, y); }
+    ctx.stroke();
+  }
+
+  function drawPlayer(){
+    const flashing = performance.now() < player.invulnUntil;
+    ctx.save();
+    if(!flashing || Math.floor(performance.now() / 80) % 2 === 0){
+      ctx.shadowBlur = 14;
+      ctx.shadowColor = 'rgba(79,214,255,0.65)';
+      ctx.fillStyle = '#4fd6ff';
+      ctx.beginPath();
+      ctx.arc(player.x, player.y, player.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+
+    // aim indicator
+    const len = Math.hypot(player.aimX, player.aimY) || 1;
+    const nx = player.aimX / len, ny = player.aimY / len;
+    ctx.strokeStyle = 'rgba(79,214,255,0.9)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(player.x + nx * (player.r + 4), player.y + ny * (player.r + 4));
+    ctx.lineTo(player.x + nx * (player.r + 14), player.y + ny * (player.r + 14));
+    ctx.stroke();
+  }
+
+  function drawEnemies(){
+    const now = performance.now();
+    for(const en of enemies){
+      const flashing = now < en.hitFlashUntil;
+      ctx.save();
+      ctx.shadowBlur = 10;
+      ctx.shadowColor = en.glow;
+      ctx.fillStyle = flashing ? '#ffffff' : en.color;
+      ctx.beginPath();
+      ctx.arc(en.x, en.y, en.r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      // hp pips for enemies that take more than one hit
+      if(en.maxHp > 1){
+        const pipW = 5, pipGap = 3;
+        const totalW = en.maxHp * pipW + (en.maxHp - 1) * pipGap;
+        let px = en.x - totalW / 2;
+        const py = en.y - en.r - 9;
+        for(let k = 0; k < en.maxHp; k++){
+          ctx.fillStyle = k < en.hp ? en.color : '#1c2534';
+          ctx.fillRect(px, py, pipW, 3);
+          px += pipW + pipGap;
+        }
+      }
+    }
+  }
+
+  function drawPickups(){
+    const now = performance.now();
+    for(const p of pickups){
+      const remaining = p.expiresAt - now;
+      if(remaining < 700 && Math.floor(now / 100) % 2 === 0) continue; // blink when about to expire
+
+      ctx.save();
+      ctx.shadowBlur = 12;
+      ctx.shadowColor = 'rgba(124,255,138,0.7)';
+      ctx.fillStyle = '#7cff8a';
+      ctx.beginPath();
+      // diamond shape
+      ctx.moveTo(p.x, p.y - p.r);
+      ctx.lineTo(p.x + p.r, p.y);
+      ctx.lineTo(p.x, p.y + p.r);
+      ctx.lineTo(p.x - p.r, p.y);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  function drawBullets(){
+    ctx.fillStyle = '#eaf6ff';
+    for(const b of bullets){
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  function drawHud(){
+    // health bar
+    const barW = W - 32, barH = 8, barX = 16, barY = 14;
+    ctx.fillStyle = '#101a26';
+    ctx.fillRect(barX, barY, barW, barH);
+    const pct = player.hp / player.maxHp;
+    ctx.fillStyle = pct > 0.5 ? '#4fd6ff' : (pct > 0.2 ? '#ffd166' : '#ff4d6d');
+    ctx.fillRect(barX, barY, barW * pct, barH);
+
+    ctx.font = '13px "SFMono-Regular", Consolas, monospace';
+    ctx.fillStyle = '#cfd8e3';
+    ctx.textBaseline = 'top';
+
+    ctx.textAlign = 'left';
+    ctx.fillText('SCORE ' + score, 16, 32);
+    ctx.fillStyle = '#7cff8a';
+    ctx.fillText('AMMO x' + player.bulletCount, 16, 50);
+    ctx.fillStyle = '#cfd8e3';
+
+    ctx.textAlign = 'right';
+    const totalSec = Math.floor(elapsed);
+    const mm = String(Math.floor(totalSec / 60)).padStart(2, '0');
+    const ss = String(totalSec % 60).padStart(2, '0');
+    ctx.fillText(mm + ':' + ss, W - 16, 32);
+  }
+
+  function render(){
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = '#05070c';
+    ctx.fillRect(0, 0, W, H);
+    drawGrid();
+    drawEnemies();
+    drawPickups();
+    drawBullets();
+    drawPlayer();
+    drawHud();
+  }
+
+  // --- loop ---
+  function loop(now){
+    if(state !== 'playing'){ return; }
+    const dt = Math.min(0.033, (now - lastTime) / 1000);
+    lastTime = now;
+    update(dt, now);
+    render();
+    requestAnimationFrame(loop);
+  }
+
+  function startGame(){
+    resetGame();
+    state = 'playing';
+    startOverlay.style.display = 'none';
+    gameoverOverlay.style.display = 'none';
+    lastTime = performance.now();
+    requestAnimationFrame(loop);
+  }
+
+  function endGame(){
+    state = 'gameover';
+    const totalSec = Math.floor(elapsed);
+    const mm = String(Math.floor(totalSec / 60)).padStart(2, '0');
+    const ss = String(totalSec % 60).padStart(2, '0');
+    finalTimeEl.textContent = '생존 시간 ' + mm + ':' + ss;
+    finalKillsEl.textContent = '처치 수 ' + kills;
+    gameoverOverlay.style.display = 'flex';
+  }
+
+  startBtn.addEventListener('click', startGame);
+  restartBtn.addEventListener('click', startGame);
+
+  const sizeButtons = document.querySelectorAll('.size-btn');
+  const stageEl = document.getElementById('stage');
+  sizeButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      sizeButtons.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      stageEl.style.maxWidth = btn.dataset.size + 'px';
+    });
+  });
+
+  // initial static render behind start overlay
+  resetGame();
+  render();
+})();
+</script>
+
+</body>
+</html>
